@@ -1,0 +1,57 @@
+diff --git a/examples/simple_trainer.py b/examples/simple_trainer.py
+index 6a30be73..633a476d 100644
+--- a/examples/simple_trainer.py
++++ b/examples/simple_trainer.py
+@@ -108,6 +108,13 @@ class Config:
+ 
+     # Near plane clipping distance
+     near_plane: float = 0.01
++    # Clamp Gaussian scales to at most this size (world units, 0 = off). Prevents a few huge Gaussians near a
++    # camera from blowing up the tile-intersection buffers (OOM) on close-range indoor data.
++    max_scale: float = 0.0
++    # Surface constraint (npz with origin[3], voxel, grid[X,Y,Z] bool): every 100 steps, Gaussians whose centre lies
++    # outside this occupancy grid (e.g. a dilated lidar map) are killed (opacity -> ~0) so MCMC relocates them onto
++    # the surfaces. Stops "explain the image from behind the wall / under the floor" clutter.
++    surface_grid: Optional[str] = None
+     # Far plane clipping distance
+     far_plane: float = 1e10
+ 
+@@ -385,6 +392,12 @@ class Runner:
+             self.strategy_state = self.cfg.strategy.initialize_state()
+         else:
+             assert_never(self.cfg.strategy)
++        self.surface = None
++        if cfg.surface_grid:
++            z = np.load(cfg.surface_grid)
++            self.surface = (torch.tensor(z["origin"], dtype=torch.float32, device=self.device), float(z["voxel"]),
++                            torch.from_numpy(z["grid"].astype(bool)).to(self.device))
++            print(f"surface constraint: {cfg.surface_grid}, grid {tuple(z['grid'].shape)}, {int(z['grid'].sum())} occupied voxels")
+ 
+         # Compression Strategy
+         self.compression_method = None
+@@ -846,6 +859,9 @@ class Runner:
+                 else:
+                     optimizer.step()
+                 optimizer.zero_grad(set_to_none=True)
++            if cfg.max_scale > 0:
++                with torch.no_grad():
++                    self.splats["scales"].clamp_(max=math.log(cfg.max_scale))
+             for optimizer in self.pose_optimizers:
+                 optimizer.step()
+                 optimizer.zero_grad(set_to_none=True)
+@@ -869,6 +885,15 @@ class Runner:
+                     packed=cfg.packed,
+                 )
+             elif isinstance(self.cfg.strategy, MCMCStrategy):
++                if self.surface is not None and step % 100 == 0:
++                    with torch.no_grad():
++                        org, vox, grid = self.surface
++                        idx = torch.floor((self.splats["means"] - org) / vox).long()
++                        shp = torch.tensor(grid.shape, device=idx.device)
++                        inb = ((idx >= 0) & (idx < shp)).all(1)
++                        inside = torch.zeros_like(inb)
++                        inside[inb] = grid[idx[inb, 0], idx[inb, 1], idx[inb, 2]]
++                        self.splats["opacities"][~inside] = -9.0
+                 self.cfg.strategy.step_post_backward(
+                     params=self.splats,
+                     optimizers=self.optimizers,

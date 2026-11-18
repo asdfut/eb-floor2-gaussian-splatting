@@ -1,0 +1,2 @@
+Message definitions copied from Livox-SDK/livox_ros_driver2 (MIT License, https://github.com/Livox-SDK/livox_ros_driver2),
+packaged without the driver so recorded bags can be read without the Livox SDK.
