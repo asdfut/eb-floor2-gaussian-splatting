@@ -24,8 +24,11 @@ ns_x = float(np.median(p1[(p1[:, 0] > p4w - 4) & (p1[:, 0] < p4w) & (p1[:, 1] < 
 arm = p1[(p1[:, 0] < ns_x - 4) & (p1[:, 1] > y2w + 3) & (p1[:, 1] < y4w + 2)]
 arm_s, arm_n = np.percentile(arm[:, 1], 10), np.percentile(arm[:, 1], 90)
 arm_w = np.percentile(arm[:, 0], 2) + 1.0
-route = [(arm_w, arm_s), (ns_x - 2.5, arm_s), (ns_x, arm_s + 1.0), (ns_x, y4w - 0.6), (p4w, y4w), (p4e, y4e),
-         (x3, y4e - 0.8), (x3, y2e + 0.8), (p2e, y2e), (p2w, y2w), (ns_x, y2w + 0.8), (ns_x, arm_n - 1.0),
-         (ns_x - 2.5, arm_n), (arm_w, arm_n)]
+# p1 arm: the north lane was recorded heading EAST and the south lane heading WEST -> leave on the north lane and
+# come back on the south lane, so the video looks where the camera looked (the opposite order showed the hall
+# only from behind: 9 % of frames had a photo in the same direction)
+route = [(arm_w, arm_n), (ns_x - 2.5, arm_n), (ns_x, y4w - 0.6), (p4w, y4w), (p4e, y4e),
+         (x3, y4e - 0.8), (x3, y2e + 0.8), (p2e, y2e), (p2w, y2w), (ns_x, y2w + 0.8), (ns_x, arm_s + 1.0),
+         (ns_x - 2.5, arm_s), (arm_w, arm_s)]
 np.save(sys.argv[2], np.array(route))
 print("route waypoints:", np.round(route, 2).tolist())

@@ -43,6 +43,7 @@ def main():
     ap.add_argument("--plan_only", action="store_true", help="only save route_<h>.npz")
     ap.add_argument("--labels", action="store_true", help="write the height name on each row of the stacked video")
     ap.add_argument("--route", default=None, help=".npy with (x, y) waypoints (default: built-in ROUTE)")
+    ap.add_argument("--snap_view", type=float, default=0.0, help="turn towards recorded view directions where the travel direction was never recorded (deg tolerance, 0 = off)")
     ap.add_argument("--hfov", type=float, default=0.0, help="horizontal FOV of the video camera (deg, 0 = ZED intrinsics)")
     ap.add_argument("--pitch", type=float, default=0.0, help="camera pitch (deg, negative = look down)")
     ap.add_argument("--walls_dir", default=None, help="dir with walls_<p>.npz + place_T.npz (lidar walls for --clear)")
@@ -90,6 +91,7 @@ def main():
     cells, cnt = np.unique(np.round(Pw[:, :2] / 0.05).astype(np.int64), axis=0, return_counts=True)
     W2 = cells[cnt >= 5] * 0.05                    # 5 cm 2D wall/object cells with real support (no stray points)
     wtree = cKDTree(W2)
+    all_tree = cKDTree(cams[:, :2, 3])
 
     def snap_route(h):
         """pull the route onto the lane actually driven at this height in the same direction (training views)"""
@@ -119,6 +121,23 @@ def main():
             push = (xy[m_] - W2[wi[m_]]) / np.maximum(d[m_], 1e-3)[:, None] * (a.clear - d[m_])[:, None]
             tgt = xy.copy(); tgt[m_] += push
             xy, yaw = plan(gaussian_filter1d(tgt, 0.3 / a.step, axis=0, mode="nearest"))
+        if a.snap_view > 0:
+            # view snapping: where no recorded photo (any height) near this spot looks within snap_view deg of the
+            # travel direction (corners / junction turns), turn the camera to the nearest recorded direction instead,
+            # so the turn happens quickly where views exist instead of slowly sweeping across never-seen walls
+            tgt_y = yaw.copy()
+            for i in range(len(xy)):
+                idx = all_tree.query_ball_point(xy[i], 0.8)
+                if not idx:
+                    continue
+                dd = (cam_yaw[idx] - yaw[i] + np.pi) % (2 * np.pi) - np.pi
+                if np.abs(dd).min() > np.radians(a.snap_view):
+                    near = dd[np.abs(dd) < np.radians(80)]
+                    if len(near):
+                        tgt_y[i] = yaw[i] + near[np.argmin(np.abs(near))]
+            yaw = gaussian_filter1d(tgt_y, 0.15 / a.step, mode="nearest")
+            for i in range(1, len(yaw)):
+                yaw[i] = yaw[i - 1] + np.clip(yaw[i] - yaw[i - 1], -np.radians(a.max_turn), np.radians(a.max_turn))
         dw, _ = wtree.query(xy)
         zfill = np.where(np.isnan(zz), np.nanmedian(zz), zz)
         z = gaussian_filter1d(np.interp(np.linspace(0, 1, len(xy)), np.linspace(0, 1, len(zfill)), zfill), 2.0 / a.step)

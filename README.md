@@ -10,7 +10,17 @@
 
 ## 下載影片與模型
 
-影片與模型檔太大，放在 [Releases](../../releases)（最新為 **v2.0**；v1.0 為上一版）：
+影片與模型檔太大，放在 [Releases](../../releases)（最新為 **v2.1**：Isaac Sim 碰撞場景＋各高度單獨影片；v2.0 為 v2 模型本身；v1.0 為上一版）：
+
+**v2.1**
+
+| 檔案 | 內容 |
+|---|---|
+| `floor2_h1_front*.mp4`、`floor2_h2_front*.mp4`、`floor2_h3_front*.mp4` | 修正後路線（route v3）的各高度單獨影片；原速 0.6 m/s、`_x1.5`、`_x2` |
+| `EB2F_v2.usdz.part1`、`.part2` | Isaac Sim 場景（v2 高斯＋碰撞），2.9 GB，因單檔 2 GB 上限切成兩段，下載後 `cat EB2F_v2.usdz.part1 EB2F_v2.usdz.part2 > EB2F_v2.usdz` |
+| `collision_floor.ply`、`collision_obstacles.ply`、`collision.usdc` | 碰撞網格（地板／牆面家具天花板），單獨使用 |
+
+**v2.0**
 
 | 檔案 | 內容 |
 |---|---|
@@ -35,6 +45,38 @@ v2 影片的虛擬相機：水平視角 75°（ZED 原生約 101°，畫面邊�
 | 光達為主時的整層格局（4 區剛性 ICP，無尺度校正） | T265 誤差分布（BA 修正量，紅 = T265 偏差大） |
 |---|---|
 | ![](docs/images/floor_layout_lidar.png) | ![](docs/images/t265_error_map.png) |
+
+## Isaac Sim 場景與碰撞（v2.1）
+
+把 v2 整層模型和碰撞網格打包成一個 `.usdz`，在 Isaac Sim 6.1 直接開啟，按 Play 就有重力與碰撞。
+
+| 實拍（上）vs Isaac Sim 渲染（下），p1 大廳 | p4 北走廊（視角跨過分塊接縫） |
+|---|---|
+| ![](docs/images/isaac_vs_photo_p1hall.jpg) | ![](docs/images/isaac_vs_photo_p4.jpg) |
+
+**場景結構**（Z 軸朝上，單位公尺；整個場景上移 0.19 m，地板約在 z = 0）
+- `/World/EB2F/Gaussians/Part0..3`：`ParticleField3DGaussianSplat`（OpenUSD 26.03 schema），1,227 萬個高斯，SH 3 階，float。
+- `/World/EB2F/Collision/Floor`、`Obstacles`：隱形網格，`PhysicsCollisionAPI`＋三角網格碰撞。
+- `/World/PhysicsScene`：重力 −Z。
+
+**碰撞怎麼做**（`scripts/make_collision_mesh.py`）
+
+![碰撞俯視圖：顏色 = 地板高度，黑點 = 0–1.5 m 的障礙物](docs/images/isaac_collision_topdown.jpg)
+
+- **地板**：前處理時光達地圖的地板已被挖掉，換成合成地板，所以地板高度改從高斯模型量測：取各區錄影路徑 1 m 內、不透明且平躺的高斯的中位數（p1 −0.204、p2 −0.183、p3 −0.191、p4 −0.182 m），交界處平滑過渡。可走範圍 = 離路徑 2 m 內、0.15–1.5 m 高度沒有光達點、且和路徑相連的格子（約 400 m²）。
+- **牆、家具、天花板**：4 區光達點（剛性 place_T 轉到整層座標，去掉合成地板點）→ 5 cm 體素 → 去除孤立點 → 膨脹 1 格 → marching cubes → 簡化到 60 萬個三角形。
+
+**實測**（`scripts/isaac_test_usdz.py`，結果見 `results/isaac/physics_render_test.txt`）：從實拍相機位置渲染和照片一致；球掉落後停在地板上（誤差 1 cm 內）；球以 4 m/s 丟向牆面會停下並反彈，不會穿牆。
+
+**打包注意事項**（`scripts/make_isaac_usdz.py`）
+- 不用 Isaac 內建的 `omni.kit.converter.gsplat`：它逐點用 Python 迴圈、寫成 ASCII `.usda`，1,200 萬個高斯不實際。這裡改用 numpy → `Vt` 陣列直接寫二進位 `.usdc`。
+- **單一 prim 的 SH 陣列超過 2 GB 時，渲染結果全黑，而且沒有任何錯誤訊息**，所以沿 x 軸切成 4 個 prim，畫面上看不到接縫。
+- 半精度屬性（`scalesh` 等）能讓檔案小一半，但畫面明顯變髒（和 float 版相比 PSNR 29 dB），所以使用 float。
+
+**開啟**：`python scripts/isaac_open_usdz.py EB2F_v2.usdz`，視角會放在 p1 大廳 h2 高度；或在 Isaac Sim 選 File → Open。顯示記憶體約需 9 GB，載入約 3 分鐘。
+想看碰撞網格：Viewport 眼睛圖示 → Show By Type → Physics → Colliders。
+
+**限制**：碰撞只涵蓋錄影路徑附近，門後的房間沒有地板；南側走廊實際只有約 1.6 m 寬。
 
 ## v2 改進（2026-11-19）
 

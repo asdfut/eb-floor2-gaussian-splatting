@@ -1,0 +1,16 @@
+Isaac Sim 6.1 headless test of EB2F_v2.usdz (scripts/isaac_test_usdz.py), 2026-11-19
+Scene lifted +0.19 m, so the floor is at z ~ 0 (p1 -0.014, p4 +0.008).
+
+p1 hall (camera = recorded image p1_h2_00175.jpg)
+  render: OK (mean 144), see docs/images/isaac_vs_photo_p1hall.jpg
+  sphere r=0.15 dropped at (-10,-1.5,1.0): rests at z=0.136  -> floor -0.014 (expected -0.014)
+  sphere r=0.15 thrown at -4 m/s toward the south wall (y ~ -4.5): stops at y=-4.263, bounces back, no tunnelling
+
+p4 north corridor (camera = p4_h2_00319.jpg, view crosses the x=23.9 chunk seam)
+  render: OK (mean 60, p4 is the dark corridor), see docs/images/isaac_vs_photo_p4.jpg
+  sphere dropped at (20,1,1.0): rests at z=0.158 -> floor +0.008 (expected +0.008)
+  sphere thrown at +4 m/s toward the north wall: stops at y=2.327, bounces back
+
+GPU memory: Isaac + the 12.27M-Gaussian scene ~ 9 GB.
+Notes: one ParticleField prim with a >2 GB SH array renders black without any error -> 4 prims;
+half-precision attributes (scalesh, ...) render visibly noisier (PSNR 29 dB vs float) -> float.
