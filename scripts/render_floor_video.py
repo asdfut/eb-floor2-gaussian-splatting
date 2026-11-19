@@ -43,6 +43,9 @@ def main():
     ap.add_argument("--plan_only", action="store_true", help="only save route_<h>.npz")
     ap.add_argument("--labels", action="store_true", help="write the height name on each row of the stacked video")
     ap.add_argument("--route", default=None, help=".npy with (x, y) waypoints (default: built-in ROUTE)")
+    ap.add_argument("--hfov", type=float, default=0.0, help="horizontal FOV of the video camera (deg, 0 = ZED intrinsics)")
+    ap.add_argument("--pitch", type=float, default=0.0, help="camera pitch (deg, negative = look down)")
+    ap.add_argument("--walls_dir", default=None, help="dir with walls_<p>.npz + place_T.npz (lidar walls for --clear)")
     ap.add_argument("--clear", type=float, default=0.0, help="minimum distance of the camera path from walls (m, 0 = off; wall cells still noisy)")
     a = ap.parse_args()
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -56,8 +59,12 @@ def main():
         cams.append(np.linalg.inv(T)); names.append(m.images[i].name)
     cams = np.array(cams); names = np.array(names)
     c0 = m.cameras[sorted(m.cameras)[0]]
-    K_front = torch.tensor([[c0.fx, 0, c0.cx], [0, c0.fy, c0.cy], [0, 0, 1]], dtype=torch.float32, device=dev)[None]
     FW, FH = c0.width, c0.height
+    if a.hfov > 0:     # narrower virtual camera: the extreme edges of the ZED view are grazing walls/ceiling
+        fx = (FW / 2) / np.tan(np.radians(a.hfov) / 2)
+        K_front = torch.tensor([[fx, 0, FW / 2], [0, fx, FH / 2], [0, 0, 1]], dtype=torch.float32, device=dev)[None]
+    else:
+        K_front = torch.tensor([[c0.fx, 0, c0.cx], [0, c0.fy, c0.cy], [0, 0, 1]], dtype=torch.float32, device=dev)[None]
 
     def plan(xy):
         """constant-speed, smoothed, heading-limited path from a polyline"""
@@ -69,10 +76,17 @@ def main():
         return xy, yaw
 
     route = np.load(a.route) if a.route else np.array(ROUTE, float)
+    _p = -np.radians(a.pitch)  # rig frame x forward, y left, z up: positive rotation about y tilts forward axis down
+    PITCH = np.array([[np.cos(_p), 0, -np.sin(_p)], [0, 1, 0], [np.sin(_p), 0, np.cos(_p)]]).T
     base_xy, base_yaw = plan(resample(route, 0.05))
     fwd = cams[:, :3, 2]; cam_yaw = np.arctan2(fwd[:, 1], fwd[:, 0])
     m.load_points3D()
-    Pw = m.points3D[(m.points3D[:, 2] > 0.1) & (m.points3D[:, 2] < 1.8)]
+    if a.walls_dir:     # clean lidar wall points of each place (walls_<p>.npz, floor-relative z) + place transforms
+        Ts_ = dict(np.load(os.path.join(a.walls_dir, "place_T.npz")))
+        Pw = np.concatenate([np.load(os.path.join(a.walls_dir, f"walls_{q}.npz"))["walls"] @ T_[:3, :3].T + T_[:3, 3]
+                             for q, T_ in Ts_.items()])
+    else:
+        Pw = m.points3D[(m.points3D[:, 2] > 0.1) & (m.points3D[:, 2] < 1.8)]
     cells, cnt = np.unique(np.round(Pw[:, :2] / 0.05).astype(np.int64), axis=0, return_counts=True)
     W2 = cells[cnt >= 5] * 0.05                    # 5 cm 2D wall/object cells with real support (no stray points)
     wtree = cKDTree(W2)
@@ -150,7 +164,7 @@ def main():
         for i in range(len(xy)):
             c, s_ = np.cos(yaw[i]), np.sin(yaw[i])
             c2w = np.tile(np.eye(4), (3, 1, 1))
-            c2w[:, :3, :3] = np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1]]) @ FACES[0]
+            c2w[:, :3, :3] = np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1]]) @ PITCH @ FACES[0]
             for k, h in enumerate(["h3", "h2", "h1"]):
                 c2w[k, :3, 3] = [xy[i, 0], xy[i, 1], zs[h][i]]
             vm = torch.linalg.inv(torch.tensor(c2w, dtype=torch.float32, device=dev))

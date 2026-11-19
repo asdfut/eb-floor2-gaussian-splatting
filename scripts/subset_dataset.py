@@ -13,13 +13,18 @@ cams = [(m.cameras[c].width, m.cameras[c].height, np.array([[m.cameras[c].fx, 0,
 def c2w_of(im):
     T = np.eye(4); T[:3, :3] = im.R(); T[:3, 3] = im.tvec
     return np.linalg.inv(T)
-own = np.array([c2w_of(m.images[i])[:2, 3] for i in m.images if m.images[i].name.startswith(prefix)])
+PART_MAP = os.environ.get("PART_MAP")   # JSON image name -> partition label; then PREFIX is a label (e.g. p1a)
+if PART_MAP:
+    import json; _pm = json.load(open(PART_MAP)); is_own = lambda n: _pm.get(n) == prefix
+else:
+    is_own = lambda n: n.startswith(prefix)
+own = np.array([c2w_of(m.images[i])[:2, 3] for i in m.images if is_own(m.images[i].name)])
 from scipy.spatial import cKDTree
 tree = cKDTree(own)
 names, c2ws, coi = [], [], []
 for i in sorted(m.images, key=lambda i: m.images[i].name):
     im = m.images[i]
-    if not im.name.startswith(prefix):
+    if not is_own(im.name):
         T_ = c2w_of(im); cpos = T_[:2, 3]
         d_, j_ = tree.query(cpos)
         near = expand > 0 and d_ <= expand

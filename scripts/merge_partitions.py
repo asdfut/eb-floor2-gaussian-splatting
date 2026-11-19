@@ -38,6 +38,8 @@ def main():
     ap.add_argument("--n_save", type=int, default=40)
     ap.add_argument("--blend_m", type=float, default=1.5, help="cross-fade width at partition boundaries (0 = hard)")
     ap.add_argument("--prefix", default="EB_part_", help="partition dataset/result name prefix")
+    ap.add_argument("--ckpt_name", default=None, help="checkpoint file name in each partition (default: latest step)")
+    ap.add_argument("--part_map", default=None, help="JSON image name -> partition label (make_part_map.py)")
     ap.add_argument("--carve_r", type=float, default=0.25,
                     help="free-space carving: drop Gaussians within this xy distance of a camera centre, between "
                          "just above the floor and just above the highest camera (the robot's swept volume; 0 = off)")
@@ -51,15 +53,19 @@ def main():
     os.makedirs(os.path.join(a.out, "ckpts"), exist_ok=True); os.makedirs(os.path.join(a.out, "renders"), exist_ok=True)
     cams = floor_cams(a.data)
     C = np.array([np.linalg.inv(T)[:2, 3] for _, T, _, _, _ in cams])
-    owner = np.array([n.split("_")[0] for n, *_ in cams])
+    if a.part_map:
+        pm = json.load(open(a.part_map)); owner = np.array([pm.get(n, "") for n, *_ in cams])
+    else:
+        owner = np.array([n.split("_")[0] for n, *_ in cams])
     tree = cKDTree(C)
     merged = {k: [] for k in KEYS}
     trees_own = {p: cKDTree(C[owner == p]) for p in a.parts}
     trees_oth = {p: cKDTree(C[owner != p]) for p in a.parts}
     log = []
     for p in a.parts:
-        ck = sorted(glob.glob(os.path.join(ROOT, "results", f"{a.prefix}{p}", "ckpts", "ckpt_*_rank0.pt")),
-                    key=lambda s: int(os.path.basename(s).split("_")[1]))[-1]
+        ck = os.path.join(ROOT, "results", f"{a.prefix}{p}", "ckpts", a.ckpt_name) if a.ckpt_name else \
+            sorted(glob.glob(os.path.join(ROOT, "results", f"{a.prefix}{p}", "ckpts", "ckpt_*_rank0.pt")),
+                   key=lambda s: int(os.path.basename(s).split("_")[1]))[-1]
         sp = torch.load(ck, map_location="cpu", weights_only=False)["splats"]
         xy = sp["means"][:, :2].numpy()
         if a.blend_m > 0:
