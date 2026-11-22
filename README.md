@@ -67,8 +67,8 @@ v2 影片的虛擬相機：水平視角 75°（ZED 原生約 101°，畫面邊�
 | 檔案 | 內容 |
 |---|---|
 | `floor2_eb1121_h3_front.mp4`、`_x1.5`、`_x2` | 新模型 h3 高度繞整層（route v3） |
-| `floor2_eb1121_compressed.ply` | 新模型整層，SuperSplat 壓縮 PLY，0.67 GB |
-| `floor2_eb1121_west.ply`、`floor2_eb1121_east.ply` | 標準 3DGS PLY，以 x = 23.9 m 切成東西兩半 |
+| `floor2_eb1121_compressed.ply` | 新模型整層全部 1,279 萬個高斯，SuperSplat 壓縮 PLY，0.67 GB |
+| `floor2_eb1121.ply` | **整層單一檔**標準 3DGS PLY（SH 3 階，2.00 GB）：為符合 GitHub 單檔 2 GB 上限，去掉最透明的 431 萬個高斯（不透明度 < 0.018），剩 847 萬個；曝光公平 PSNR 32.33 → 32.29 |
 | `EB_1121_colmap.zip` | 4223 張關鍵影格 + COLMAP BA 模型（`sparse/0`）+ 訓練用資料集（`sparse_gsplat/0`），樓層座標、公尺 |
 | `eb1121_new_vs_v2.jpg` | 照片 / 新模型 / v2 並排 |
 
