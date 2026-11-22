@@ -1,0 +1,23 @@
+{
+ "summary": {
+  "psnr": 30.8792688254542,
+  "ssim": 0.939561047810036,
+  "lpips": 0.19856020458192633,
+  "num_GS": 12789640,
+  "n_val": 149,
+  "per_group_psnr": {
+   "n_h3": 30.8792688254542
+  }
+ },
+ "log": [
+  "p1a: ckpt_colourfix.pt 3000000 Gaussians, kept 2047102 in own region",
+  "p1b: ckpt_colourfix.pt 3000000 Gaussians, kept 1845101 in own region",
+  "p2a: ckpt_colourfix.pt 3000000 Gaussians, kept 1358665 in own region",
+  "p2b: ckpt_colourfix.pt 3000000 Gaussians, kept 1644249 in own region",
+  "p3a: ckpt_colourfix.pt 3000000 Gaussians, kept 1261504 in own region",
+  "p3b: ckpt_colourfix.pt 3000000 Gaussians, kept 1925080 in own region",
+  "p4a: ckpt_colourfix.pt 3000000 Gaussians, kept 1515956 in own region",
+  "p4b: ckpt_colourfix.pt 3000000 Gaussians, kept 1191983 in own region",
+  "opacity < 0.0: removed 0"
+ ]
+}

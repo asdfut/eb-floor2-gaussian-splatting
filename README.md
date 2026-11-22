@@ -5,6 +5,8 @@
 
 ![三個高度同一位置（由上到下 h3 / h2 / h1）](docs/images/hall_lidar_version.jpg)
 
+> **EB_1121 重錄版（2026-11-22，分支 `eb1121`，Release [v3.0-eb1121](../../releases/tag/v3.0-eb1121)）**：用 2026-11-21 重新錄的一段 bag（整層、只有 h3 高度、南北走廊雙向、光線較亮）**單獨**訓練的整層模型。詳見[EB_1121 重錄版](#eb_1121-重錄版2026-11-22)。
+
 > **v2（2026-11-19）**：關鍵影格加密一倍、整層切成 8 個分區、每張影像的曝光補償、光達牆面約束、各分區色彩校正。
 > 排除曝光差異後 PSNR 30.96 → **31.33**（兩版都沒訓練過的同一批影像：30.29 → **31.29**），細節保留率 38% → 49%。詳見[v2 改進](#v2-改進2026-11-19)。
 
@@ -30,6 +32,56 @@
 | `floor2_v2_west.ply`、`floor2_v2_east.ply` | v2 整層模型的標準 3DGS PLY，因 GitHub 單檔 2 GB 上限，以 x = 23.9 m 切成東西兩半 |
 
 v2 影片的虛擬相機：水平視角 75°（ZED 原生約 101°，畫面邊緣都是被斜看的牆）、離牆至少 0.55 m、下傾 4°。
+
+## EB_1121 重錄版（2026-11-22）
+
+![同一視角：照片 / EB_1121 新模型 / v2（數字為曝光公平 PSNR）](docs/images/eb1121_new_vs_v2.jpg)
+
+**資料**：一段 932 秒的 bag（27,731 張 ZED 影像，感測器與外參和 v2 相同）。整層走兩圈，南北走廊**來回雙向**都有；相機高度只有一個（1.27 m，等同 h3）。影像平均亮度 110（舊 p2_h2 為 57），清晰度（Laplacian 變異數中位數）53（舊為 42）。
+
+**位姿**（光達為主）
+| 步驟 | 結果 |
+|---|---|
+| FAST-LIO2 | 330 m 繞一圈回到起點差 0.58 m，z 漂移 ±0.3 m |
+| `relocalise_bag.py`：每 1 秒子圖對 v2 的 2F 光達地圖做 point-to-plane 對齊 | 中位殘差 2.8 cm，15 cm 內 inlier 0.97，0 次跟丟 → 直接在 v2 的樓層座標系 |
+| 關鍵影格（0.05 m / 2.5°） | 4223 張 |
+| `refine_colmap.py`：光達位姿先驗的 COLMAP BA | 重投影 0.78 px，相機安裝角修正 2.03°（v2 為 2.29°），位姿修正中位 5.2 cm / 0.57°，保留 4193 張 |
+
+**訓練**：與 v2 相同的設定與 8 個分區（每張新影像歸到最近 v2 相機的分區），MCMC 每區上限 300 萬高斯，合併後 1,279 萬個高斯。各分區驗證 PSNR 31.0–33.3（v2 各分區 23.5–27.9，v2 混了 12 段曝光不同的錄影）。
+
+**評估（曝光公平 PSNR）**
+| 模型 | 測試影像 | PSNR | LPIPS |
+|---|---|---|---|
+| EB_1121 新模型 | 自己留出的 149 張 | **32.33** | 0.199 |
+| v2 | 自己留出的 h3 影像 | 31.89 | 0.270（三高度合計） |
+| v2 | EB_1121 的 149 張 | 23.33 | — |
+| EB_1121 新模型 | v2 固定的 483 張：h3 / h1、h2 | 21.3–26.4 / 19–24 | — |
+
+- 各自在自己的資料上 PSNR 差不多，但 LPIPS 與上方並排圖顯示新模型的牆面、海報、暗走廊（p2/p4）明顯清楚。
+- 兩個模型都**無法重現另一天的畫面**（約 23 dB）：兩次錄影之間燈光／地板與玻璃反光、物品位置不同，加上視角沒被拍過；所以交叉數字不代表「v2 差 9 dB」。
+- 只錄了 h3 高度，h1/h2 視角品質差（19–24 dB）；要三個高度都好需補錄。
+
+![EB_1121 COLMAP 俯視圖（30.9 萬個 SfM 點，紅線為相機軌跡）](docs/images/eb1121_colmap_topview.jpg)
+
+**v3.0-eb1121 Release 檔案**
+| 檔案 | 內容 |
+|---|---|
+| `floor2_eb1121_h3_front.mp4`、`_x1.5`、`_x2` | 新模型 h3 高度繞整層（route v3） |
+| `floor2_eb1121_compressed.ply` | 新模型整層，SuperSplat 壓縮 PLY，0.67 GB |
+| `floor2_eb1121_west.ply`、`floor2_eb1121_east.ply` | 標準 3DGS PLY，以 x = 23.9 m 切成東西兩半 |
+| `EB_1121_colmap.zip` | 4223 張關鍵影格 + COLMAP BA 模型（`sparse/0`）+ 訓練用資料集（`sparse_gsplat/0`），樓層座標、公尺 |
+| `eb1121_new_vs_v2.jpg` | 照片 / 新模型 / v2 並排 |
+
+**重現**
+```bash
+fast_lio/run/run_fastlio.sh bags/EB_1121 lio/EB_1121.tum 2.0        # FAST-LIO2
+python scripts/relocalise_bag.py bags/EB_1121 lio/EB_1121.tum lio/floor/EB_1121.tum
+python scripts/bag_to_colmap.py bags/EB_1121 sessions_lio_dense/EB_1121 --prep_only \
+       --odom_dir lio/floor --no_planar --kf_dist 0.05 --kf_deg 2.5
+python scripts/build_session_dataset.py init sessions_lio_dense/EB_1121 data/EB_1121_init
+scripts/run_1121.sh    # COLMAP BA → 資料集 → 8 分區訓練 → 合併 → 評估 → 影片
+```
+相關結果檔在 `results/eb1121/`。
 
 ## 成果
 

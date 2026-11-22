@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Re-evaluate merged models on held-out images: raw PSNR and exposure-fair PSNR (per-image per-channel
-gain+bias fit of the render to the photo before PSNR), per group. usage: eval_colourfit.py <out_dir> <data> [names.json]"""
+gain+bias fit of the render to the photo before PSNR), per group. usage: eval_colourfit.py <out_dir> <data> [names.json|-] [result.json]"""
 import sys, json, os, numpy as np, torch
 from PIL import Image
 from pycolmap import SceneManager
 from gsplat.rendering import rasterization
 out, data = sys.argv[1], sys.argv[2]
-names = json.load(open(sys.argv[3])) if len(sys.argv) > 3 else list(json.load(open(f"{out}/eval.json"))["per_image"])
+names = json.load(open(sys.argv[3])) if len(sys.argv) > 3 and sys.argv[3] != "-" else list(json.load(open(f"{out}/eval.json"))["per_image"])
 sp = torch.load(f"{out}/ckpts/ckpt_merged.pt", map_location="cuda", weights_only=False)["splats"]
 G = (sp["means"], sp["quats"], torch.exp(sp["scales"]), torch.sigmoid(sp["opacities"]), torch.cat([sp["sh0"], sp["shN"]], 1))
 m = SceneManager(data + "/sparse/0/"); m.load_cameras(); m.load_images(); by = {m.images[i].name: m.images[i] for i in m.images}
@@ -31,4 +31,4 @@ groups = sorted(set(n[:5] for n in res))
 summ = {"n": len(res), "psnr_raw": float(a[:, 0].mean()), "psnr_fair": float(a[:, 1].mean()),
         "per_group": {gname: [round(float(np.mean([v[0] for k, v in res.items() if k.startswith(gname)])), 2),
                               round(float(np.mean([v[1] for k, v in res.items() if k.startswith(gname)])), 2)] for gname in groups}}
-json.dump(summ, open(f"{out}/eval_fair.json", "w"), indent=1); print(json.dumps(summ))
+json.dump(summ, open(sys.argv[4] if len(sys.argv) > 4 else f"{out}/eval_fair.json", "w"), indent=1); print(json.dumps(summ))

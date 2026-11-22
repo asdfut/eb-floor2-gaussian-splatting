@@ -1,0 +1,2 @@
+refined: keep 4193/4223 images; mount fix [ 2.03 -0.11 -0.38] deg; pose change median 5.2 cm / 0.57 deg
+done -> data/EB_1121_floor: 4193 images, 759084 points (581240 lidar/floor + 296354 SfM, 4 cm dedup)

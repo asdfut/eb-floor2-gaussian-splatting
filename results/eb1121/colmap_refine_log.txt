@@ -1,0 +1,21 @@
+[18:28:20] init model: 1 cameras, 4223 images
+[18:28:21] extracting SIFT ...
+[18:32:12] database: 4223 images, 5695459 keypoints, 0 verified pairs
+[18:32:13] matching 66612 pose-guided pairs ...
+[18:34:15] verified pairs: 66612 / 66612
+[18:35:59] stageA_ 0: triangulated 422587 points, mean reproj 1.618px, mean track 7.27
+[18:48:05]     BA: Ceres Solver Report: Iterations: 101, Initial cost: 1.909187e+06, Final cost: 6.071972e+05, Termination: NO_CONVERGENCE
+[18:48:06] stageA_ 0: after BA mean reproj 1.618px
+[18:48:07] camera mounting correction (camera-frame rotvec, median over images): [ 2.03 -0.11 -0.38] deg
+[18:50:00] stageB_ 0: triangulated 384115 points, mean reproj 1.397px, mean track 8.71
+[18:58:25]     BA: Ceres Solver Report: Iterations: 101, Initial cost: 1.781011e+06, Final cost: 7.534854e+05, Termination: NO_CONVERGENCE
+[18:58:26] stageB_ 0: after BA mean reproj 1.397px
+[19:00:26] stageB_ 1: triangulated 311378 points, mean reproj 0.789px, mean track 11.06
+[19:10:57]     BA: Ceres Solver Report: Iterations: 101, Initial cost: 9.745247e+05, Final cost: 9.050563e+05, Termination: NO_CONVERGENCE
+[19:10:59] stageB_ 1: after BA mean reproj 0.789px
+[19:13:08] stageB_ 2: triangulated 309981 points, mean reproj 0.780px, mean track 11.11
+[19:21:09]     BA: Ceres Solver Report: Iterations: 101, Initial cost: 9.574570e+05, Final cost: 9.082721e+05, Termination: NO_CONVERGENCE
+[19:21:10] stageB_ 2: after BA mean reproj 0.780px
+[19:21:11] pose change vs (mount-corrected) T265/lidar: position median 5.2 cm, 95% 12.8 cm; rotation median 0.57 deg, 95% 1.36 deg
+[19:21:11]   n: 4223 images, kept 4193  (rot>3.0: 6, pos>0.5: 0, obs<80: 24)
+[19:21:12] done
