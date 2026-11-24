@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Subset of a gsplat/colmap dataset: images whose name starts with PREFIX, points within MARGIN m of their cameras."""
-import sys, os, numpy as np
+import sys, os, json, numpy as np
 from pycolmap import SceneManager
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bag_to_colmap as B
@@ -21,9 +21,13 @@ else:
 own = np.array([c2w_of(m.images[i])[:2, 3] for i in m.images if is_own(m.images[i].name)])
 from scipy.spatial import cKDTree
 tree = cKDTree(own)
+EXCLUDE = set(json.load(open(os.environ["EXCLUDE"]))) if os.environ.get("EXCLUDE") else set()   # fixed test images
+HEIGHTS = os.environ.get("HEIGHTS")   # e.g. "h2,h3": keep only images of these sensor heights
 names, c2ws, coi = [], [], []
 for i in sorted(m.images, key=lambda i: m.images[i].name):
     im = m.images[i]
+    if HEIGHTS and im.name.split("_")[1] not in HEIGHTS.split(","): continue
+    if im.name in EXCLUDE: continue
     if not is_own(im.name):
         T_ = c2w_of(im); cpos = T_[:2, 3]
         d_, j_ = tree.query(cpos)

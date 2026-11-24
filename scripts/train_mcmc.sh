@@ -10,13 +10,14 @@
 #                   (train loss 0.1) while all Gaussians die -> flat-color renders (PSNR 15).
 set -eo pipefail
 S=$1; shift
+R=${OUT_NAME:-$S}   # result dir name (default = dataset name)
 ROOT=$HOME/gsplat_eb
 source ~/miniconda3/etc/profile.d/conda.sh && conda activate gs
 set -u
 cd ~/gsplat/examples
-mkdir -p $ROOT/results/$S
+mkdir -p $ROOT/results/$R
 python simple_trainer.py mcmc \
-  --data-dir $ROOT/data/$S --data-factor 1 --result-dir $ROOT/results/$S \
+  --data-dir $ROOT/data/$S --data-factor 1 --result-dir $ROOT/results/$R \
   --strategy.cap-max 3000000 \
   --strategy.noise-lr 50000 \
   --visible-adam \
@@ -24,4 +25,4 @@ python simple_trainer.py mcmc \
   --eval-steps 2000 7000 30000 --save-steps 7000 30000 --ply-steps 7000 30000 \
   --save-ply \
   --disable-viewer \
-  "$@" 2>&1 | tr '\r' '\n' | grep --line-buffered -vE "^\s*$" | awk 'NR%200==1 || /PSNR|Step|Error|Traceback|saved/ {print; fflush()}' > $ROOT/results/$S/train_log.txt
+  "$@" 2>&1 | tr '\r' '\n' | grep --line-buffered -vE "^\s*$" | awk 'NR%200==1 || /PSNR|Step|Error|Traceback|saved/ {print; fflush()}' > $ROOT/results/$R/train_log.txt

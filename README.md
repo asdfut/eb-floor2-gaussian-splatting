@@ -5,6 +5,8 @@
 
 ![三個高度同一位置（由上到下 h3 / h2 / h1）](docs/images/hall_lidar_version.jpg)
 
+> **新三高度版（2026-11-25，分支 `new3h`，Release [v4.0-new3h](../../releases/tag/v4.0-new3h)）**：EB_1121 的 h3 加上 2026-11-23 重錄的 h2、h1，**三個高度全部用新錄影**一起訓練的整層模型，附 Isaac Sim 場景（.usdz）。新資料 held-out 三個高度都在 30.5–31 dB。詳見[新三高度版](#新三高度版2026-11-25)。
+
 > **EB_1121 重錄版（2026-11-22，分支 `eb1121`，Release [v3.0-eb1121](../../releases/tag/v3.0-eb1121)）**：用 2026-11-21 重新錄的一段 bag（整層、只有 h3 高度、南北走廊雙向、光線較亮）**單獨**訓練的整層模型。詳見[EB_1121 重錄版](#eb_1121-重錄版2026-11-22)。
 
 > **v2（2026-11-19）**：關鍵影格加密一倍、整層切成 8 個分區、每張影像的曝光補償、光達牆面約束、各分區色彩校正。
@@ -12,7 +14,7 @@
 
 ## 下載影片與模型
 
-影片與模型檔太大，放在 [Releases](../../releases)（最新為 **v2.1**：Isaac Sim 碰撞場景＋各高度單獨影片；v2.0 為 v2 模型本身；v1.0 為上一版）：
+影片與模型檔太大，放在 [Releases](../../releases)（最新為 **v4.0-new3h**：新三高度整層模型＋Isaac Sim 場景；v3.0-eb1121 為只用新 h3 的模型；**v2.1**：Isaac Sim 碰撞場景＋各高度單獨影片；v2.0 為 v2 模型本身；v1.0 為上一版）：
 
 **v2.1**
 
@@ -32,6 +34,51 @@
 | `floor2_v2_west.ply`、`floor2_v2_east.ply` | v2 整層模型的標準 3DGS PLY，因 GitHub 單檔 2 GB 上限，以 x = 23.9 m 切成東西兩半 |
 
 v2 影片的虛擬相機：水平視角 75°（ZED 原生約 101°，畫面邊緣都是被斜看的牆）、離牆至少 0.55 m、下傾 4°。
+
+## 新三高度版（2026-11-25）
+
+資料：`bags/EB_1121`（2026-11-21，h3，相機離地約 1.27 m）＋ `bags/EB_1123_h2`、`bags/EB_1123_h1`（2026-11-23，整層，相機 z 0.49 / 0.06 m）。三段都先用 FAST-LIO2 跑出軌跡，再重新定位到樓層座標（`relocalise_bag.py`），然後**三段一起做一次 COLMAP BA**（`refine_colmap.py`），靠跨高度的特徵匹配把三個高度綁在一起：保留 11,112 / 11,263 張，相對光達位姿的修正量中位數 5.1 cm / 0.57°。訓練設定與 v2 / EB_1121 相同（8 分區、曝光補償、光達牆面約束、色彩校正），整層 1,231 萬個高斯。
+
+![三個高度同一位置（由上到下 h3 / h2 / h1），新三高度版](docs/images/new3h_3heights.jpg)
+
+**評估**（排除曝光差異的 PSNR，dB；測試影像都沒參與訓練）
+
+| 模型 | 新 h1 | 新 h2 | 新 h3 | 全部（393 張） |
+|---|---|---|---|---|
+| **新三高度版** | **30.56** | **30.96** | **31.03** | **30.86** |
+| EB_1121（只有新 h3） | 21.47 | 22.60 | 28.32 | 23.93 |
+| v2（舊 h1+h2+h3） | 23.10 | 23.37 | 22.94 | 23.16 |
+
+- 在 EB_1121 的固定 h3 測試集（149 張）上：新三高度版 31.28，EB_1121 32.33。三個高度共用同一批高斯，h3 約少 1 dB。
+- 跨天的數字（新模型測舊資料 23.15、舊模型測新資料 23.16）主要反映兩次錄影之間燈光、反光、物品擺放不同，不代表品質差距。
+- 各分區驗證集：`results/new3h/partition_val.txt`；COLMAP：`results/new3h/colmap_refine_log.txt`。
+
+**Isaac Sim 場景**：`make_collision_mesh.py --session EB_1121,EB_1123_h2,EB_1123_h1`（三段新錄影的光達，h1 的光達貼近地面，牆腳也有掃到）→ 地板 2 萬、障礙物 60 萬個三角形；`make_isaac_usdz.py`（float、SH 3 階、沿 x 切 4 個 prim）→ 2.91 GB。無頭測試（`isaac_test_usdz.py`）：從實拍相機位置渲染正常；球落地後靜止；以 4 m/s 丟向牆面會停在牆前，不會穿牆（`results/new3h/isaac_physics_render_test.txt`）。
+
+![Isaac Sim 渲染（新三高度版 usdz）](docs/images/new3h_isaac_render.jpg)
+
+**v4.0-new3h Release 檔案**
+| 檔案 | 內容 |
+|---|---|
+| `EB2F_new3h.usdz.part0`、`.part1` | Isaac Sim 場景（高斯＋碰撞），2.91 GB，因 GitHub 單檔 2 GB 上限切成兩段：`cat EB2F_new3h.usdz.part0 EB2F_new3h.usdz.part1 > EB2F_new3h.usdz`，再用 `SHA256SUMS.txt` 核對 |
+| `floor2_new3h_3heights_front.mp4`、`_x1.5`、`_x2` | 三個高度上下並排（上 h3 / 中 h2 / 下 h1）繞整層 |
+| `floor2_new3h_h3_front` / `_h2_front` / `_h1_front`（各含 `_x1.5`、`_x2`） | 各高度單獨影片，路線沿各自高度實際錄過的相機軌跡 |
+| `floor2_new3h_compressed.ply` | 整層全部 1,231 萬個高斯，SuperSplat 壓縮 PLY，0.62 GB |
+| `floor2_new3h.ply` | 整層單一檔標準 3DGS PLY（SH 3 階，2.00 GB）：去掉最透明的 384 萬個高斯（不透明度 < 0.011），剩 847 萬個；held-out PSNR 30.86 → 30.84 |
+| `SHA256SUMS.txt` | 各檔與合併後 usdz 的校驗碼 |
+
+**開啟 usdz**：不要用 File > Open 直接開（只會看到格線，高斯不會畫出來）。用 `python scripts/isaac_open_usdz.py EB2F_new3h.usdz`，或在 Script Editor 建立 Z 朝上的新 stage，再把 usdz 用 reference 掛進來。需要 Isaac Sim 6.1，顯示記憶體約 9 GB。
+
+**重現**
+```bash
+scripts/run_1123_prep.sh     # EB_1123_h1/h2: FAST-LIO2 -> relocalise_bag.py -> sessions_lio_dense
+scripts/run_new3h.sh         # 3 sessions -> joint COLMAP BA -> 8 partitions -> merge -> eval -> videos
+python scripts/make_collision_mesh.py results/EB_new3h_gs/ckpts/ckpt_merged.pt data/EB_new3h_floor \
+       results/isaac_usd_new3h/collision.ply --part_map data/floor2_lio/part8_new3h.json \
+       --session sessions_lio_dense/EB_1121,sessions_lio_dense/EB_1123_h2,sessions_lio_dense/EB_1123_h1
+python scripts/make_isaac_usdz.py results/EB_new3h_gs/ckpts/ckpt_merged.pt results/isaac_usd_new3h/collision \
+       results/isaac_usd_new3h/EB2F_new3h.usdz
+```
 
 ## EB_1121 重錄版（2026-11-22）
 

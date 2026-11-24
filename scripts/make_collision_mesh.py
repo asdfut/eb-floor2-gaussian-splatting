@@ -7,21 +7,36 @@ floor  : height field from the v2 Gaussian model itself (opaque, flat Gaussians 
 walls / furniture / ceiling : lidar points of the four places (data/EB_<p>_liod_merged, rigid place_T -> floor frame,
          synthetic floor points removed), 5 cm occupancy, isolated voxels dropped, 1 voxel dilation, marching cubes,
          quadric decimation.
-usage: make_collision_mesh.py <ckpt_merged.pt> <dataset_dir> <out.ply> [target_tris=600000]"""
+usage: make_collision_mesh.py <ckpt_merged.pt> <dataset_dir> <out.ply> [target_tris=600000]
+       [--part_map part.json]  place of each camera from a partition map (image names without a pN_ prefix)
+       [--session sessions_lio_dense/<bag>[,<bag2>...]]  obstacles from those floor-frame sessions' lidar maps instead of
+                                             the four v2 place maps (e.g. EB_1121, so the mesh matches that recording)
+       [--add_v2_lidar]  with --session: ALSO use the v2 place maps. A single h3-height recording (lidar 1.4 m up,
+                         Mid-360 sees only 7 deg below horizontal) misses the lower ~0.6 m of nearby walls; the v2 h1
+                         recordings (lidar near the floor) cover them. EB_1121 alone: walls hit by 6.6 % of rays at
+                         0.05 m above the floor (v2: 51 %)."""
 import os, sys, numpy as np, torch, open3d as o3d
 from pycolmap import SceneManager
 from scipy import ndimage
 from skimage.measure import marching_cubes
 
-ck, ds, out = sys.argv[1:4]
-target = int(sys.argv[4]) if len(sys.argv) > 4 else 600000
+import argparse
+ap = argparse.ArgumentParser(); ap.add_argument("ckpt"); ap.add_argument("ds"); ap.add_argument("out")
+ap.add_argument("target", nargs="?", type=int, default=600000)
+ap.add_argument("--part_map", default=None); ap.add_argument("--session", default=None)
+ap.add_argument("--add_v2_lidar", action="store_true")
+A = ap.parse_args(); ck, ds, out, target = A.ckpt, A.ds, A.out, A.target
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VOX, CELL = 0.05, 0.10
 
 # ---- camera footprint (where the recording went)
 m = SceneManager(ds + "/sparse/0/"); m.load_images()
 C = np.array([-m.images[i].R().T @ m.images[i].tvec for i in m.images])
-CP = np.array([int(m.images[i].name[1]) for i in m.images])          # place of each camera (p1..p4)
+if A.part_map:
+    import json; _pm = json.load(open(A.part_map))
+    CP = np.array([int(_pm[m.images[i].name][1]) for i in m.images])
+else:
+    CP = np.array([int(m.images[i].name[1]) for i in m.images])      # place of each camera (p1..p4)
 lo, hi = C[:, :2].min(0) - 6.0, C[:, :2].max(0) + 6.0
 nx, ny = np.ceil((hi - lo) / CELL).astype(int)
 cam_cells = np.zeros((nx, ny), bool)
@@ -55,13 +70,21 @@ Hs = np.vectorize(zp.get)(CP[jj]).reshape(nx, ny).astype(np.float64)
 Hs = ndimage.gaussian_filter(Hs, 1.0 / CELL / 2)
 
 # ---- obstacles from lidar
-T = dict(np.load(f"{ROOT}/data/floor2_lio/place_T.npz"))
-P = []
-for p in ["p1", "p2", "p3", "p4"]:
-    mm = SceneManager(f"{ROOT}/data/EB_{p}_liod_merged/sparse/0/"); mm.load_points3D()
-    X = mm.points3D @ T[p][:3, :3].T + T[p][:3, 3]
-    P.append(X[np.abs(X[:, 2] + 0.0252) > 0.004])          # synthetic floor points of the preprocessing
-P = np.concatenate(P)
+P_s = []
+if A.session:   # floor-frame static lidar voxels (3 cm) of one recording
+    P_s = [np.load(os.path.join(d, "session.npz"))["lidar_map"].astype(np.float64) for d in A.session.split(",")]
+    print(f"lidar from {A.session}: {[len(x) for x in P_s]} points")
+if A.session and not A.add_v2_lidar:
+    P = np.concatenate(P_s)
+else:
+    T = dict(np.load(f"{ROOT}/data/floor2_lio/place_T.npz"))
+    P = []
+    for p in ["p1", "p2", "p3", "p4"]:
+        mm = SceneManager(f"{ROOT}/data/EB_{p}_liod_merged/sparse/0/"); mm.load_points3D()
+        X = mm.points3D @ T[p][:3, :3].T + T[p][:3, 3]
+        P.append(X[np.abs(X[:, 2] + 0.0252) > 0.004])          # synthetic floor points of the preprocessing
+    print(f"lidar from the v2 place maps: {sum(len(x) for x in P)} points")
+    P = np.concatenate(P + P_s)
 pi = np.floor((P[:, :2] - lo) / CELL).astype(int)
 ok = (pi >= 0).all(1) & (pi[:, 0] < nx) & (pi[:, 1] < ny); P, pi = P[ok], pi[ok]
 # walkable footprint = free 2D cells (no lidar between 0.15 and 1.5 m above the floor) within 2 m of the camera

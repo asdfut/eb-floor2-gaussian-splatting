@@ -7,7 +7,7 @@ gs env.
   stage "refined": <init_dir> <out_dir> --refined
                    applies <init_dir>/refined.npz (refine_colmap.py, colmap env): BA poses, strict image filter
                    (nobs>=80, rot<3 deg, pos<0.3 m, same as build_floor2.py --strict), adds SfM points (err<2 px).
-usage: build_session_dataset.py init <session_dir> <out_dir> [--prefix n --tag h3]
+usage: build_session_dataset.py init <session_dir>[,<session_dir>...] <out_dir> [--prefix n --tag h3[,h1...]]
        build_session_dataset.py refined <init_dir> <out_dir>
 """
 import argparse, os, sys, numpy as np
@@ -29,15 +29,21 @@ os.makedirs(a.out, exist_ok=True)
 log = B.make_logger(a.out, "build_log.txt")
 
 if a.stage == "init":
-    S = np.load(os.path.join(a.src, "session.npz"))
-    traj = S["base_traj"].astype(np.float64)
-    log(f"session {a.src}: {len(S['names'])} keyframes, base z median {np.median(traj[:, 2]):.2f}, "
-        f"cam z median {np.median(S['c2ws'][:, 2, 3]):.2f}")
-    pts = B.voxelize(S["lidar_map"].astype(np.float64), a.voxel)
-    pts = B.clean_map(pts, a.floor_real, [(traj, float(np.median(traj[:, 2])))], log)
+    # several sessions (comma-separated src and tags) -> one dataset, one COLMAP camera per session
+    srcs, tags = a.src.split(","), a.tag.split(",")
+    assert len(srcs) == len(tags), "one --tag per session"
+    Ss = [np.load(os.path.join(s, "session.npz")) for s in srcs]
+    trajs, maps = [], []
+    for s, S in zip(srcs, Ss):
+        traj = S["base_traj"].astype(np.float64); trajs.append((traj, float(np.median(traj[:, 2]))))
+        maps.append(S["lidar_map"].astype(np.float64))
+        log(f"session {s}: {len(S['names'])} keyframes, base z median {np.median(traj[:, 2]):.2f}, "
+            f"cam z median {np.median(S['c2ws'][:, 2, 3]):.2f}")
+    pts = B.voxelize(np.concatenate(maps), a.voxel)
+    pts = B.clean_map(pts, a.floor_real, trajs, log)
     pts = pts[pts[:, 2] > a.floor_real + 0.03]          # drop the real floor/mirror: replaced by the synthetic plane
     from scipy.spatial import cKDTree
-    xy = traj[:, :2]; lo, hi = xy.min(0) - a.floor_radius, xy.max(0) + a.floor_radius
+    xy = np.concatenate([t[:, :2] for t, _ in trajs]); lo, hi = xy.min(0) - a.floor_radius, xy.max(0) + a.floor_radius
     gx, gy = np.meshgrid(np.arange(lo[0], hi[0], a.floor_grid), np.arange(lo[1], hi[1], a.floor_grid))
     g = np.stack([gx.ravel(), gy.ravel()], 1)
     d, _ = cKDTree(xy[::4]).query(g, distance_upper_bound=a.floor_radius); g = g[d < a.floor_radius]
@@ -45,14 +51,15 @@ if a.stage == "init":
     log(f"  {len(pts)} lidar points + {len(fl)} synthetic floor points at z={a.floor_synth}")
     pts = np.concatenate([pts, fl]).astype(np.float32)
     img_dir = os.path.join(a.out, "images"); os.makedirs(img_dir, exist_ok=True)
-    names, paths = [], []
-    for n in S["names"]:
-        name = f"{a.prefix}_{a.tag}_{n}"; src = os.path.abspath(os.path.join(a.src, "images", str(n)))
-        dst = os.path.join(img_dir, name)
-        if os.path.lexists(dst): os.remove(dst)
-        os.symlink(src, dst); names.append(name); paths.append(src)
-    cams = [(int(S["W"]), int(S["H"]), S["K"])]
-    B.finalize(a.out, paths, names, S["c2ws"].astype(np.float64), cams, [0] * len(names), pts, a, log)
+    names, paths, c2ws, cams, coi = [], [], [], [], []
+    for ci, (s, S, tag) in enumerate(zip(srcs, Ss, tags)):
+        cams.append((int(S["W"]), int(S["H"]), S["K"]))
+        for n, c2w in zip(S["names"], S["c2ws"]):
+            name = f"{a.prefix}_{tag}_{n}"; src = os.path.abspath(os.path.join(s, "images", str(n)))
+            dst = os.path.join(img_dir, name)
+            if os.path.lexists(dst): os.remove(dst)
+            os.symlink(src, dst); names.append(name); paths.append(src); c2ws.append(c2w); coi.append(ci)
+    B.finalize(a.out, paths, names, np.array(c2ws, np.float64), cams, coi, pts, a, log)
 else:
     from pycolmap import SceneManager
     m = SceneManager(a.src + "/sparse/0/"); m.load_cameras(); m.load_images(); m.load_points3D()
@@ -60,8 +67,10 @@ else:
     good = (z["nobs"] >= 80) & (z["dang"] < 3) & (z["dpos"] < 0.3)
     log(f"refined: keep {good.sum()}/{len(good)} images; mount fix {np.round(z['mount_fix_deg'], 2)} deg; "
         f"pose change median {np.median(z['dpos'])*100:.1f} cm / {np.median(z['dang']):.2f} deg")
-    cid = sorted(m.cameras)[0]; c = m.cameras[cid]
-    cams = [(c.width, c.height, np.array([[c.fx, 0, c.cx], [0, c.fy, c.cy], [0, 0, 1]]))]
+    cids = sorted(m.cameras); cams = []           # keep the init cameras (one per session)
+    for cid in cids:
+        c = m.cameras[cid]; cams.append((c.width, c.height, np.array([[c.fx, 0, c.cx], [0, c.fy, c.cy], [0, 0, 1]])))
+    cam_of = {m.images[i].name: cids.index(m.images[i].camera_id) for i in m.images}
     img_dir = os.path.join(a.out, "images"); os.makedirs(img_dir, exist_ok=True)
     names, c2ws = [], []
     for n, c2w, g in zip(z["names"], z["c2ws"], good):
@@ -70,10 +79,11 @@ else:
         if os.path.lexists(dst): os.remove(dst)
         os.symlink(os.path.realpath(os.path.join(a.src, "images", n)), dst)
         names.append(n); c2ws.append(c2w)
+    coi = [cam_of[n] for n in names]
     sel = z["sfm_err"] < 2.0
     P = np.concatenate([m.points3D, z["sfm_xyz"][sel]]); C = np.concatenate([m.point3D_colors, z["sfm_rgb"][sel]])
     key = np.floor(P / 0.04).astype(np.int64); _, keep = np.unique(key, axis=0, return_index=True)
     P, C = P[keep].astype(np.float32), C[keep].astype(np.uint8)
-    B.write_colmap(os.path.join(a.out, "sparse", "0"), cams, [0] * len(names), names, np.array(c2ws), P, C,
+    B.write_colmap(os.path.join(a.out, "sparse", "0"), cams, coi, names, np.array(c2ws), P, C,
                    [[] for _ in names])
     log(f"done -> {a.out}: {len(names)} images, {len(P)} points ({len(m.points3D)} lidar/floor + {sel.sum()} SfM, 4 cm dedup)")

@@ -1,0 +1,8 @@
+p1a psnr 29.23 ssim 0.9402 lpips 0.2533 num_GS 3000000
+p1b psnr 30.75 ssim 0.9459 lpips 0.2332 num_GS 3000000
+p2a psnr 30.61 ssim 0.9454 lpips 0.2564 num_GS 3000000
+p2b psnr 30.06 ssim 0.9415 lpips 0.2616 num_GS 3000000
+p3a psnr 29.64 ssim 0.9400 lpips 0.2542 num_GS 3000000
+p3b psnr 30.24 ssim 0.9385 lpips 0.2424 num_GS 3000000
+p4a psnr 28.84 ssim 0.9366 lpips 0.2634 num_GS 3000000
+p4b psnr 29.21 ssim 0.9372 lpips 0.2577 num_GS 3000000

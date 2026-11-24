@@ -1,0 +1,5 @@
+[12:02:23] init model: 3 cameras, 11263 images
+[12:02:23] database: 11263 images, 13724201 keypoints, 191551 verified pairs
+[12:38:05] camera mounting correction (camera-frame rotvec, median over images): [ 2.08 -0.08 -0.41] deg
+[14:34:33] pose change vs (mount-corrected) T265/lidar: position median 5.1 cm, 95% 14.8 cm; rotation median 0.57 deg, 95% 1.32 deg
+[14:34:33]   n: 11263 images, kept 11114  (rot>3.0: 26, pos>0.5: 1, obs<80: 142)
